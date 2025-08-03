@@ -1,33 +1,67 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Modal from './Modal'
 
 interface SSHConnection {
   id: string
   name: string
-  host: string
-  username: string
+  hostname: string
+  user: string
   port: number
-  keyPath?: string
+  identityFile?: string
 }
 
 function SSHConnections() {
   const [connections, setConnections] = useState<SSHConnection[]>([])
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const handleAddConnection = (connection: Omit<SSHConnection, 'id'>) => {
+  // Load connections on component mount
+  useEffect(() => {
+    loadConnections()
+  }, [])
+
+  const loadConnections = async () => {
+    try {
+      const result = await window.electronAPI.ssh.loadConnections()
+      if (result.success) {
+        setConnections(result.connections)
+      }
+    } catch (error) {
+      console.error('Failed to load connections:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const saveConnections = async (newConnections: SSHConnection[]) => {
+    try {
+      const result = await window.electronAPI.ssh.saveConnections(newConnections)
+      if (!result.success) {
+        console.error('Failed to save connections:', result.error)
+        alert('保存连接配置失败: ' + result.error)
+      }
+    } catch (error) {
+      console.error('Failed to save connections:', error)
+      alert('保存连接配置失败: ' + error)
+    }
+  }
+
+  const handleAddConnection = async (connection: Omit<SSHConnection, 'id'>) => {
     const newConnection: SSHConnection = {
       ...connection,
       id: Date.now().toString()
     }
-    setConnections(prev => [...prev, newConnection])
+    const updatedConnections = [...connections, newConnection]
+    setConnections(updatedConnections)
+    await saveConnections(updatedConnections)
   }
 
   const handleConnect = async (connection: SSHConnection) => {
     try {
       const result = await window.electronAPI.ssh.openTerminal({
-        host: connection.port !== 22 ? `${connection.host}:${connection.port}` : connection.host,
-        username: connection.username,
-        keyPath: connection.keyPath
+        host: connection.port !== 22 ? `${connection.hostname}:${connection.port}` : connection.hostname,
+        username: connection.user,
+        keyPath: connection.identityFile
       })
 
       if (result.success) {
@@ -40,19 +74,21 @@ function SSHConnections() {
     }
   }
 
-  const handleDeleteConnection = (connectionId: string) => {
+  const handleDeleteConnection = async (connectionId: string) => {
     if (!confirm('确定要删除这个SSH连接配置吗？')) return
-    setConnections(prev => prev.filter(c => c.id !== connectionId))
+    const updatedConnections = connections.filter(c => c.id !== connectionId)
+    setConnections(updatedConnections)
+    await saveConnections(updatedConnections)
   }
 
   const handleEditConnection = (connection: SSHConnection) => {
     // For now, just show the connection details in an alert
     const details = [
       `名称: ${connection.name}`,
-      `主机: ${connection.host}`,
+      `主机: ${connection.hostname}`,
       `端口: ${connection.port}`,
-      `用户名: ${connection.username}`,
-      connection.keyPath ? `密钥: ${connection.keyPath}` : '密钥: 无'
+      `用户名: ${connection.user}`,
+      connection.identityFile ? `密钥: ${connection.identityFile}` : '密钥: 无'
     ].join('\n')
     
     alert(details)
@@ -72,7 +108,12 @@ function SSHConnections() {
 
       <div className="card">
         <h2>连接列表</h2>
-        {connections.length === 0 ? (
+        {isLoading ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">⏳</div>
+            <p>正在加载连接配置...</p>
+          </div>
+        ) : connections.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">🔗</div>
             <p>暂无SSH连接配置</p>
@@ -85,8 +126,8 @@ function SSHConnections() {
                 <div className="list-item-info">
                   <div className="list-item-title">{connection.name}</div>
                   <div className="list-item-subtitle">
-                    {connection.username}@{connection.host}:{connection.port}
-                    {connection.keyPath && ` (密钥: ${connection.keyPath.split('/').pop()})`}
+                    {connection.user}@{connection.hostname}:{connection.port}
+                    {connection.identityFile && ` (密钥: ${connection.identityFile.split('/').pop()})`}
                   </div>
                 </div>
                 <div className="list-item-actions">
@@ -141,13 +182,13 @@ interface AddConnectionModalProps {
 
 function AddConnectionModal({ onClose, onAdd }: AddConnectionModalProps) {
   const [name, setName] = useState('')
-  const [host, setHost] = useState('')
-  const [username, setUsername] = useState('')
+  const [hostname, setHostname] = useState('')
+  const [user, setUser] = useState('')
   const [port, setPort] = useState('22')
-  const [keyPath, setKeyPath] = useState('')
+  const [identityFile, setIdentityFile] = useState('')
 
   const handleSubmit = () => {
-    if (!name || !host || !username) {
+    if (!name || !hostname || !user) {
       alert('请填写必要字段：名称、主机、用户名')
       return
     }
@@ -160,10 +201,10 @@ function AddConnectionModal({ onClose, onAdd }: AddConnectionModalProps) {
 
     onAdd({
       name,
-      host,
-      username,
+      hostname,
+      user,
       port: portNum,
-      keyPath: keyPath || undefined
+      identityFile: identityFile || undefined
     })
     onClose()
   }
@@ -186,8 +227,8 @@ function AddConnectionModal({ onClose, onAdd }: AddConnectionModalProps) {
         <input
           type="text"
           className="form-control"
-          value={host}
-          onChange={(e) => setHost(e.target.value)}
+          value={hostname}
+          onChange={(e) => setHostname(e.target.value)}
           placeholder="例如: server.example.com 或 192.168.1.100"
         />
       </div>
@@ -197,8 +238,8 @@ function AddConnectionModal({ onClose, onAdd }: AddConnectionModalProps) {
         <input
           type="text"
           className="form-control"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          value={user}
+          onChange={(e) => setUser(e.target.value)}
           placeholder="例如: root 或 ubuntu"
         />
       </div>
@@ -219,8 +260,8 @@ function AddConnectionModal({ onClose, onAdd }: AddConnectionModalProps) {
         <input
           type="text"
           className="form-control"
-          value={keyPath}
-          onChange={(e) => setKeyPath(e.target.value)}
+          value={identityFile}
+          onChange={(e) => setIdentityFile(e.target.value)}
           placeholder="例如: ~/.ssh/id_rsa"
         />
       </div>

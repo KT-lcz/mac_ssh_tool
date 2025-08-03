@@ -9,6 +9,8 @@ export interface ElectronAPI {
     removeKnownHost: (hostPattern: string) => Promise<any>
     startPortForward: (params: any) => Promise<any>
     openTerminal: (params: { host: string; username: string; keyPath?: string }) => Promise<any>
+    loadConnections: () => Promise<any>
+    saveConnections: (connections: any[]) => Promise<any>
   }
   file: {
     readText: (filePath: string) => Promise<any>
@@ -24,6 +26,8 @@ const electronAPI: ElectronAPI = {
     removeKnownHost: (hostPattern) => ipcRenderer.invoke('ssh:removeKnownHost', hostPattern),
     startPortForward: (params) => ipcRenderer.invoke('ssh:startPortForward', params),
     openTerminal: (params) => ipcRenderer.invoke('ssh:openTerminal', params),
+    loadConnections: () => ipcRenderer.invoke('ssh:loadConnections'),
+    saveConnections: (connections) => ipcRenderer.invoke('ssh:saveConnections', connections),
   },
   file: {
     readText: (filePath) => ipcRenderer.invoke('file:readText', filePath),
