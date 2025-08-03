@@ -1,5 +1,5 @@
 {
-  "name": "ssh-manager",
+  "name": "mac-ssh-tool",
   "version": "1.0.0",
   "description": "A GUI SSH management tool for macOS",
   "main": "dist/main.js",
